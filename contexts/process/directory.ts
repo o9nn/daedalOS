@@ -3,6 +3,16 @@ import { type Processes } from "contexts/process/types";
 import { FOLDER_ICON, TASKBAR_HEIGHT } from "utils/constants";
 
 const directory: Processes = {
+  Live2DAvatar: {
+    Component: dynamic(() => import("components/apps/Live2DAvatar")),
+    backgroundColor: "#0a0a1a",
+    defaultSize: {
+      height: 700,
+      width: 550,
+    },
+    icon: "/System/Icons/live2d.webp",
+    title: "Live2D Avatar",
+  },
   BoxedWine: {
     Component: dynamic(() => import("components/apps/BoxedWine")),
     allowResizing: false,
