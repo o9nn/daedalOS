@@ -1,26 +1,35 @@
 // Endocrine-Expression Bridge
 // Maps 16-channel hormone state to Live2D Cubism expressions and parameters
-// This is the ⊗ composition point: VirtualEndocrineSystem ⊗ Live2DRenderer
+// This is the composition point: VirtualEndocrineSystem x Live2DRenderer
 
-import type {
-  CognitiveMode,
-  EndocrineState,
-} from "utils/endocrine";
-import type {
-  CharacterManifest,
-  CubismParameterMapping,
-  ExpressionRule,
+import  { type CognitiveMode, type EndocrineState } from "utils/endocrine";
+import  {
+  type CharacterManifest,
+  type CubismParameterMapping,
+  type ExpressionRule,
 } from "utils/live2d/characters";
+
+// Minimal type for the Live2D model interface we interact with
+interface Live2DModelBridge {
+  expression?: (name: string) => void;
+  internalModel?: {
+    coreModel?: {
+      getParameterIndex: (name: string) => number;
+      setParameterValueById: (name: string, value: number) => void;
+    };
+  };
+  motion?: (group: string, index: number, priority: number) => void;
+}
 
 /**
  * Evaluate expression rules against current hormone state.
- * Returns the best-matching expression name or null.
+ * Returns the best-matching expression name or undefined.
  */
 export const evaluateExpression = (
   rules: ExpressionRule[],
   state: EndocrineState
-): string | null => {
-  let bestMatch: string | null = null;
+): string | undefined => {
+  let bestMatch: string | undefined;
   let bestScore = 0;
 
   for (const rule of rules) {
@@ -51,7 +60,7 @@ export const evaluateExpression = (
 
 /**
  * Compute Cubism parameter values from hormone state using direct mappings.
- * Returns a map of parameter name → value.
+ * Returns a map of parameter name to value.
  */
 export const computeCubismParameters = (
   mappings: CubismParameterMapping[],
@@ -68,7 +77,6 @@ export const computeCubismParameters = (
 
     if (met) {
       // If multiple mappings target the same parameter, last wins
-      // (could be improved with weighted blending)
       params[mapping.parameter] = mapping.value;
     }
   }
@@ -82,13 +90,14 @@ export const computeCubismParameters = (
 export const findMotionForMode = (
   manifest: CharacterManifest,
   mode: CognitiveMode
-): string | null => {
+): string | undefined => {
   for (const mapping of manifest.motionMappings) {
     if (mapping.modes.includes(mode)) {
       return mapping.group;
     }
   }
-  return null;
+
+  return undefined;
 };
 
 /**
@@ -96,9 +105,11 @@ export const findMotionForMode = (
  * expression and motion changes on a Live2D model.
  */
 export class EndocrineExpressionBridge {
-  private lastExpression: string | null = null;
-  private lastMotion: string | null = null;
-  private manifest: CharacterManifest;
+  private lastExpression: string | undefined;
+
+  private lastMotion: string | undefined;
+
+  private readonly manifest: CharacterManifest;
 
   public constructor(manifest: CharacterManifest) {
     this.manifest = manifest;
@@ -108,28 +119,38 @@ export class EndocrineExpressionBridge {
    * Apply endocrine state to the Live2D model.
    * Sets Cubism parameters directly and triggers expression/motion changes.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public apply(state: EndocrineState, mode: CognitiveMode, model: any): void {
+  public apply(
+    state: EndocrineState,
+    mode: CognitiveMode,
+    model: Live2DModelBridge | undefined
+  ): void {
     if (!model) return;
 
     // 1. Evaluate best expression from rules
     const expr = evaluateExpression(this.manifest.expressionRules, state);
+
     if (expr && expr !== this.lastExpression) {
       try {
-        model.expression(expr);
+        model.expression?.(expr);
       } catch {
         // Expression may not exist in model — silently skip
       }
+
       this.lastExpression = expr;
     }
 
     // 2. Apply direct Cubism parameter mappings
-    const params = computeCubismParameters(this.manifest.cubismMappings, state);
-    if (model.internalModel?.coreModel) {
-      const coreModel = model.internalModel.coreModel;
+    const params = computeCubismParameters(
+      this.manifest.cubismMappings,
+      state
+    );
+    const coreModel = model.internalModel?.coreModel;
+
+    if (coreModel) {
       for (const [paramName, paramValue] of Object.entries(params)) {
         try {
           const paramIndex = coreModel.getParameterIndex(paramName);
+
           if (paramIndex >= 0) {
             coreModel.setParameterValueById(paramName, paramValue);
           }
@@ -141,19 +162,21 @@ export class EndocrineExpressionBridge {
 
     // 3. Apply motion for cognitive mode
     const motionGroup = findMotionForMode(this.manifest, mode);
+
     if (motionGroup && motionGroup !== this.lastMotion) {
       try {
-        model.motion(motionGroup, 0, 1); // priority 1 = idle
+        model.motion?.(motionGroup, 0, 1); // priority 1 = idle
       } catch {
         // Motion group may not exist — silently skip
       }
+
       this.lastMotion = motionGroup;
     }
   }
 
   /** Reset bridge state (e.g., on character switch) */
   public reset(): void {
-    this.lastExpression = null;
-    this.lastMotion = null;
+    this.lastExpression = undefined;
+    this.lastMotion = undefined;
   }
 }

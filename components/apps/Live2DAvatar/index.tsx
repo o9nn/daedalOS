@@ -1,20 +1,26 @@
-import { type ComponentProcessProps } from "components/system/Apps/RenderComponent";
-import StyledLive2DAvatar from "components/apps/Live2DAvatar/StyledLive2DAvatar";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import type { AgentState } from "utils/live2d/autonomousAgent";
-import { AutonomousAgent } from "utils/live2d/autonomousAgent";
+import StyledLive2DAvatar from "components/apps/Live2DAvatar/StyledLive2DAvatar";
+import  { type ComponentProcessProps } from "components/system/Apps/RenderComponent";
+import  { type EndocrineEvent } from "utils/endocrine";
+import  { type AgentState , AutonomousAgent } from "utils/live2d/autonomousAgent";
 import {
   CHARACTER_REGISTRY,
   DTECHO_MANIFEST,
   MIARA_MANIFEST,
 } from "utils/live2d/characters";
-import type { EndocrineEvent } from "utils/endocrine";
 
+// CDN libraries for Live2D rendering
+// pixi-live2d-display v0.5.0-beta requires PixiJS 6.x
+// Cubism Core supports Cubism 3/4 models; live2d.min.js supports Cubism 2.1
 const LIVE2D_LIBS = [
+  // Cubism 4 Core (latest stable from Live2D official CDN)
   "https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js",
+  // Cubism 2.1 runtime (for legacy model support)
   "https://cdn.jsdelivr.net/gh/dylanNew/live2d/webgl/Live2D/lib/live2d.min.js",
-  "https://cdn.jsdelivr.net/npm/pixi.js-legacy@6.5.2/dist/browser/pixi-legacy.min.js",
-  "https://cdn.jsdelivr.net/npm/pixi-live2d-display/dist/index.min.js",
+  // PixiJS 6.5.10 (latest 6.x — required by pixi-live2d-display)
+  "https://cdn.jsdelivr.net/npm/pixi.js-legacy@6.5.10/dist/browser/pixi-legacy.min.js",
+  // pixi-live2d-display v0.5.0-beta (latest stable, supports Cubism 2.1/3/4)
+  "https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.5.0-beta/dist/index.min.js",
 ];
 
 const KEY_HORMONES = [
@@ -28,40 +34,89 @@ const KEY_HORMONES = [
   "anandamide",
 ];
 
-const Live2DAvatar: FC<ComponentProcessProps> = ({ id }) => {
+// Minimal type declarations for external CDN-loaded PIXI + Live2D
+interface PixiLive2DModel {
+  height: number;
+  on: (event: string, cb: (hitAreas: string[]) => void) => void;
+  scale: { set: (s: number) => void };
+  width: number;
+  x: number;
+  y: number;
+}
+
+interface PixiApp {
+  destroy: (removeView: boolean) => void;
+  renderer: { resize: (w: number, h: number) => void };
+  stage: { addChild: (child: PixiLive2DModel) => void };
+  view: HTMLCanvasElement;
+}
+
+interface PixiNamespace {
+  Application: new (opts: Record<string, unknown>) => PixiApp;
+  live2d: {
+    Live2DModel: {
+      from: (
+        url: string,
+        opts: Record<string, boolean>
+      ) => Promise<PixiLive2DModel>;
+    };
+  };
+}
+
+const loadScript = (src: string): Promise<void> =>
+  new Promise<void>((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) {
+      resolve();
+      return;
+    }
+
+    const script = document.createElement("script");
+
+    script.src = src;
+    script.async = true;
+    script.addEventListener("load", () => resolve());
+    script.addEventListener("error", () =>
+      reject(new Error(`Failed to load: ${src}`))
+    );
+    document.head.append(script);
+  });
+
+const waitForCubismCore = async (): Promise<void> => {
+  const start = Date.now();
+  const globalWindow = window as unknown as Record<string, unknown>;
+
+  while (!globalWindow.Live2DCubismCore) {
+    if (Date.now() - start > 10_000) break;
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 100);
+    });
+  }
+};
+
+const Live2DAvatar: FC<ComponentProcessProps> = () => {
   const canvasContainerRef = useRef<HTMLDivElement>(null);
-  const pixiAppRef = useRef<unknown>(null);
-  const modelRef = useRef<unknown>(null);
-  const agentRef = useRef<AutonomousAgent | null>(null);
+  const pixiAppRef = useRef<PixiApp | undefined>(undefined);
+  const modelRef = useRef<PixiLive2DModel | undefined>(undefined);
+  const agentRef = useRef<AutonomousAgent | undefined>(undefined);
   const [activeCharacter, setActiveCharacter] = useState<string>("miara");
-  const [agentState, setAgentState] = useState<AgentState | null>(null);
+  const [agentState, setAgentState] = useState<AgentState | undefined>(
+    
+  );
   const [libsLoaded, setLibsLoaded] = useState<boolean>(false);
 
-  // Load CDN scripts
+  // Load CDN scripts sequentially (order matters for dependencies)
   useEffect(() => {
     let cancelled = false;
 
     const loadScripts = async (): Promise<void> => {
+      // Scripts must load sequentially — each depends on the previous
       for (const src of LIVE2D_LIBS) {
-        if (document.querySelector(`script[src="${src}"]`)) continue;
-
-        await new Promise<void>((resolve, reject) => {
-          const script = document.createElement("script");
-          script.src = src;
-          script.async = true;
-          script.onload = (): void => resolve();
-          script.onerror = (): void =>
-            reject(new Error(`Failed to load: ${src}`));
-          document.head.appendChild(script);
-        });
+        // eslint-disable-next-line no-await-in-loop
+        await loadScript(src);
       }
 
-      // Wait for Cubism Core WASM
-      const start = Date.now();
-      while (!(window as Record<string, unknown>).Live2DCubismCore) {
-        if (Date.now() - start > 10_000) break;
-        await new Promise((r) => setTimeout(r, 100));
-      }
+      await waitForCubismCore();
 
       if (!cancelled) setLibsLoaded(true);
     };
@@ -78,45 +133,42 @@ const Live2DAvatar: FC<ComponentProcessProps> = ({ id }) => {
   // Initialize PIXI app and load model
   const initializeAvatar = useCallback(
     async (characterId: string): Promise<void> => {
-      const PIXI = (window as Record<string, unknown>).PIXI as Record<
-        string,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        any
-      >;
+      const globalWindow = window as unknown as Record<string, unknown>;
+      const PIXI = globalWindow.PIXI as PixiNamespace | undefined;
+
       if (!PIXI || !canvasContainerRef.current) return;
 
       // Clean up previous
       if (agentRef.current) {
         agentRef.current.stop();
-        agentRef.current = null;
+        agentRef.current = undefined;
       }
+
       if (pixiAppRef.current) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (pixiAppRef.current as any).destroy(true);
-        pixiAppRef.current = null;
-        modelRef.current = null;
+        pixiAppRef.current.destroy(true);
+        pixiAppRef.current = undefined;
+        modelRef.current = undefined;
       }
 
       const container = canvasContainerRef.current;
-      const width = container.clientWidth;
-      const height = container.clientHeight;
+      const { clientHeight: height, clientWidth: width } = container;
 
       // Create PIXI Application
       const app = new PIXI.Application({
+        antialias: true,
         autoStart: true,
         backgroundAlpha: 0,
-        width,
         height,
-        antialias: true,
+        width,
       });
 
       container.innerHTML = "";
-      container.appendChild(app.view);
+      container.append(app.view);
       pixiAppRef.current = app;
 
       // Get character manifest
       const manifest =
-        CHARACTER_REGISTRY[characterId] ||
+        CHARACTER_REGISTRY[characterId] ??
         (characterId === "dtecho" ? DTECHO_MANIFEST : MIARA_MANIFEST);
 
       // Load Live2D model
@@ -127,9 +179,11 @@ const Live2DAvatar: FC<ComponentProcessProps> = ({ id }) => {
         });
 
         // Scale and position
+        const scaleFactor =
+          manifest.modelVersion === "cubism4" ? 0.7 : 0.5;
         const scale =
-          Math.min(width / model.width, height / model.height) *
-          (manifest.modelVersion === "cubism4" ? 0.7 : 0.5);
+          Math.min(width / model.width, height / model.height) * scaleFactor;
+
         model.scale.set(scale);
         model.x = (width - model.width * scale) / 2;
         model.y = (height - model.height * scale) / 2;
@@ -150,6 +204,7 @@ const Live2DAvatar: FC<ComponentProcessProps> = ({ id }) => {
 
         // Create autonomous agent
         const agent = new AutonomousAgent(manifest);
+
         agent.attachModel(model);
         agent.onStateChange((state: AgentState) => {
           setAgentState({ ...state });
@@ -165,31 +220,32 @@ const Live2DAvatar: FC<ComponentProcessProps> = ({ id }) => {
 
       // Handle resize
       const resizeObserver = new ResizeObserver(() => {
-        if (!container || !app || !modelRef.current) return;
-        const w = container.clientWidth;
-        const h = container.clientHeight;
-        app.renderer.resize(w, h);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const m = modelRef.current as any;
-        const s =
-          Math.min(w / m.width, h / m.height) *
-          (manifest.modelVersion === "cubism4" ? 0.7 : 0.5);
+        if (!container || !pixiAppRef.current || !modelRef.current) return;
+
+        const { clientHeight: h, clientWidth: w } = container;
+
+        pixiAppRef.current.renderer.resize(w, h);
+
+        const m = modelRef.current;
+        const sf = manifest.modelVersion === "cubism4" ? 0.7 : 0.5;
+        const s = Math.min(w / m.width, h / m.height) * sf;
+
         m.scale.set(s);
         m.x = (w - m.width * s) / 2;
         m.y = (h - m.height * s) / 2;
       });
-      resizeObserver.observe(container);
 
-      return (): void => {
-        resizeObserver.disconnect();
-      };
+      resizeObserver.observe(container);
     },
     []
   );
 
   // Initialize when libs are loaded or character changes
   useEffect(() => {
-    if (!libsLoaded) return;
+    if (!libsLoaded) {
+      // eslint-disable-next-line @typescript-eslint/no-empty-function
+      return (): void => {};
+    }
 
     initializeAvatar(activeCharacter);
 
@@ -198,7 +254,7 @@ const Live2DAvatar: FC<ComponentProcessProps> = ({ id }) => {
         agentRef.current.stop();
       }
     };
-  }, [libsLoaded, activeCharacter, initializeAvatar]);
+  }, [activeCharacter, initializeAvatar, libsLoaded]);
 
   // Cleanup on unmount
   useEffect(
@@ -206,9 +262,9 @@ const Live2DAvatar: FC<ComponentProcessProps> = ({ id }) => {
       if (agentRef.current) {
         agentRef.current.stop();
       }
+
       if (pixiAppRef.current) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (pixiAppRef.current as any).destroy(true);
+        pixiAppRef.current.destroy(true);
       }
     },
     []
@@ -252,21 +308,21 @@ const Live2DAvatar: FC<ComponentProcessProps> = ({ id }) => {
           title="Inject novelty event"
           type="button"
         >
-          ✦ Novelty
+          Novelty
         </button>
         <button
           onClick={(): void => handleInjectEvent("REWARD_RECEIVED", 0.6)}
           title="Inject reward event"
           type="button"
         >
-          ★ Reward
+          Reward
         </button>
         <button
           onClick={(): void => handleInjectEvent("THREAT_DETECTED", 0.5)}
           title="Inject threat event"
           type="button"
         >
-          ⚠ Threat
+          Threat
         </button>
         <button
           onClick={(): void =>
@@ -275,12 +331,12 @@ const Live2DAvatar: FC<ComponentProcessProps> = ({ id }) => {
           title="Inject social event"
           type="button"
         >
-          ♥ Social
+          Social
         </button>
       </div>
 
       {/* Avatar Canvas */}
-      <div className="avatar-canvas-container" ref={canvasContainerRef}>
+      <div ref={canvasContainerRef} className="avatar-canvas-container">
         {!libsLoaded && (
           <div
             style={{
@@ -297,7 +353,7 @@ const Live2DAvatar: FC<ComponentProcessProps> = ({ id }) => {
       </div>
 
       <div className="interaction-hint">
-        Click the avatar to interact • Endocrine events shape expressions
+        Click the avatar to interact - Endocrine events shape expressions
       </div>
 
       {/* Endocrine System Panel */}
@@ -309,29 +365,30 @@ const Live2DAvatar: FC<ComponentProcessProps> = ({ id }) => {
               : "Miara"}
           </span>
           <span className="cognitive-state">
-            {agentState?.cognitiveState || "Initializing..."}
+            {agentState?.cognitiveState ?? "Initializing..."}
           </span>
           <span
-            className={`cognitive-mode ${agentState?.cognitiveMode || "RESTING"}`}
+            className={`cognitive-mode ${agentState?.cognitiveMode ?? "RESTING"}`}
           >
-            {agentState?.cognitiveMode || "RESTING"}
+            {agentState?.cognitiveMode ?? "RESTING"}
           </span>
-          {agentState?.activeExpression && (
+          {agentState?.activeExpression ? (
             <span style={{ color: "#a4f", fontSize: "10px" }}>
               {agentState.activeExpression}
             </span>
-          )}
+          ) : undefined}
           <span style={{ color: "#666" }}>
-            tick #{agentState?.tickCount || 0}
+            tick #{agentState?.tickCount ?? 0}
           </span>
         </div>
         <div className="hormone-grid">
           {KEY_HORMONES.map((hormone) => {
             const value = agentState?.hormones[hormone] ?? 0;
+
             return (
-              <div className="hormone-row" key={hormone}>
+              <div key={hormone} className="hormone-row">
                 <span className="hormone-name">
-                  {hormone.replace(/_/g, " ")}
+                  {hormone.replaceAll("_", " ")}
                 </span>
                 <div className="hormone-bar">
                   <div
