@@ -1,5 +1,6 @@
 // Character definitions for Live2D avatars in daedalOS
 // Composes live2d-char-model [ live2d-miara, live2d-dtecho ]
+// Aligned with /live2d-miara and /live2d-dtecho skill specifications
 
 import type {
   CognitiveMode,
@@ -37,6 +38,8 @@ export interface CharacterManifest {
   modelUrl: string;
   modelVersion: "cubism2" | "cubism4";
   scale: number;
+  idleMotionGroup: string;
+  hitAreas: string[];
   personality: {
     openness: number;
     conscientiousness: number;
@@ -54,9 +57,13 @@ export interface CharacterManifest {
     string,
     { event: EndocrineEvent; intensity: number }
   >;
+  /** DTE-specific: maps cognitive state → named expression */
+  cognitiveExpressionMap?: Record<string, string>;
 }
 
 // ─── Miara: The Explorer ─────────────────────────────────────────────
+// Spec: /live2d-miara SKILL.md
+// Cubism 4 model, Explorer archetype, balanced OCEAN personality
 
 export const MIARA_MANIFEST: CharacterManifest = {
   id: "miara",
@@ -65,6 +72,8 @@ export const MIARA_MANIFEST: CharacterManifest = {
     "https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test/assets/haru/haru_greeter_t03.model3.json",
   modelVersion: "cubism4",
   scale: 0.12,
+  idleMotionGroup: "idle",
+  hitAreas: ["head", "body"],
   personality: {
     openness: 65,
     conscientiousness: 45,
@@ -88,6 +97,7 @@ export const MIARA_MANIFEST: CharacterManifest = {
     social: 1.05,
     novelty: 1.15,
   },
+  // Expression rules: hormone conditions → named expression
   expressionRules: [
     {
       name: "smile",
@@ -132,7 +142,9 @@ export const MIARA_MANIFEST: CharacterManifest = {
       ],
     },
   ],
+  // Endocrine → Cubism Parameter Bridge (from /live2d-miara spec)
   cubismMappings: [
+    // Dopamine(tonic) > 0.5 → ParamMouthForm +0.6 to +1.0
     {
       hormone: "dopamine_tonic",
       condition: ">",
@@ -140,6 +152,7 @@ export const MIARA_MANIFEST: CharacterManifest = {
       parameter: "ParamMouthForm",
       value: 0.8,
     },
+    // Serotonin > 0.4 → ParamEyeLOpen, ParamEyeROpen 0.7 (relaxed)
     {
       hormone: "serotonin",
       condition: ">",
@@ -154,6 +167,7 @@ export const MIARA_MANIFEST: CharacterManifest = {
       parameter: "ParamEyeROpen",
       value: 0.7,
     },
+    // Norepinephrine > 0.6 → ParamEyeLOpen, ParamEyeROpen 1.0 (wide)
     {
       hormone: "norepinephrine",
       condition: ">",
@@ -168,6 +182,7 @@ export const MIARA_MANIFEST: CharacterManifest = {
       parameter: "ParamEyeROpen",
       value: 1.0,
     },
+    // Norepinephrine > 0.6 → ParamBrowLY, ParamBrowRY +0.5 (raised)
     {
       hormone: "norepinephrine",
       condition: ">",
@@ -182,6 +197,7 @@ export const MIARA_MANIFEST: CharacterManifest = {
       parameter: "ParamBrowRY",
       value: 0.5,
     },
+    // Cortisol > 0.5 → ParamBrowLY, ParamBrowRY -0.5 (lowered)
     {
       hormone: "cortisol",
       condition: ">",
@@ -193,9 +209,18 @@ export const MIARA_MANIFEST: CharacterManifest = {
       hormone: "cortisol",
       condition: ">",
       threshold: 0.5,
+      parameter: "ParamBrowRY",
+      value: -0.5,
+    },
+    // Cortisol > 0.5 → ParamMouthForm -0.4 (frown)
+    {
+      hormone: "cortisol",
+      condition: ">",
+      threshold: 0.5,
       parameter: "ParamMouthForm",
       value: -0.4,
     },
+    // Oxytocin > 0.4 → ParamMouthForm +0.3 (gentle smile)
     {
       hormone: "oxytocin",
       condition: ">",
@@ -203,6 +228,7 @@ export const MIARA_MANIFEST: CharacterManifest = {
       parameter: "ParamMouthForm",
       value: 0.3,
     },
+    // Anandamide > 0.3 → ParamEyeLOpen, ParamEyeROpen 0.3 (drowsy)
     {
       hormone: "anandamide",
       condition: ">",
@@ -217,6 +243,14 @@ export const MIARA_MANIFEST: CharacterManifest = {
       parameter: "ParamEyeROpen",
       value: 0.3,
     },
+    // T3/T4 > 0.6 → ParamEyeBallY +0.3 (upward gaze)
+    {
+      hormone: "t3_t4",
+      condition: ">",
+      threshold: 0.6,
+      parameter: "ParamEyeBallY",
+      value: 0.3,
+    },
   ],
   motionMappings: [
     { group: "idle", modes: ["RESTING", "REFLECTIVE"] },
@@ -225,20 +259,26 @@ export const MIARA_MANIFEST: CharacterManifest = {
 };
 
 // ─── Deep Tree Echo: The Sage ────────────────────────────────────────
+// Spec: /live2d-dtecho SKILL.md
+// Reuses Miara body mesh (cubism4) with DTE personality overlay
+// 10 FACS-decomposed named expressions driven by endocrine system
 
 export const DTECHO_MANIFEST: CharacterManifest = {
   id: "dtecho",
   displayName: "Deep Tree Echo",
+  // Reuses Miara's body mesh per spec: model.path = "models/miara/model3.json"
   modelUrl:
-    "https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test/assets/shizuku/shizuku.model.json",
-  modelVersion: "cubism2",
-  scale: 0.25,
+    "https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test/assets/haru/haru_greeter_t03.model3.json",
+  modelVersion: "cubism4",
+  scale: 0.12,
+  idleMotionGroup: "idle",
+  hitAreas: ["head", "body"],
   personality: {
-    openness: 92,
-    conscientiousness: 40,
-    extraversion: 65,
-    agreeableness: 70,
-    neuroticism: 55,
+    openness: 92, // extreme curiosity, recursive exploration
+    conscientiousness: 40, // chaotic, non-linear
+    extraversion: 65, // socially engaged but introspective
+    agreeableness: 70, // empathetic, collaborative
+    neuroticism: 55, // emotionally responsive, not unstable
     archetype: "sage",
   },
   endocrineBaselines: {
@@ -252,55 +292,95 @@ export const DTECHO_MANIFEST: CharacterManifest = {
     melatonin: 0.1,
   },
   sensitivity: {
-    reward: 1.3,
-    threat: 1.1,
-    social: 1.15,
-    novelty: 1.4,
+    reward: 1.3, // high openness → strong reward response
+    threat: 1.1, // moderate neuroticism → slightly elevated
+    social: 1.15, // empathetic → social sensitivity
+    novelty: 1.4, // extreme openness → very novelty-sensitive
   },
+  // DTE expression rules (broader set for 10 named expressions)
   expressionRules: [
+    // JOY_01_BroadSmile: Duchenne happiness (REWARD mode)
     {
-      name: "smile",
+      name: "JOY_01_BroadSmile",
       conditions: [
         { hormone: "dopamine_tonic", op: ">", threshold: 0.5 },
         { hormone: "serotonin", op: ">", threshold: 0.4 },
       ],
     },
+    // JOY_02_Laughing: Active laughter (REWARD peak)
     {
-      name: "surprised",
+      name: "JOY_02_Laughing",
       conditions: [
-        { hormone: "norepinephrine", op: ">", threshold: 0.5 },
-        { hormone: "dopamine_phasic", op: ">", threshold: 0.2 },
+        { hormone: "dopamine_phasic", op: ">", threshold: 0.5 },
+        { hormone: "oxytocin", op: ">", threshold: 0.3 },
       ],
     },
+    // JOY_03_GentleSmile: Warm contentment (SOCIAL mode)
     {
-      name: "sad",
+      name: "JOY_03_GentleSmile",
       conditions: [
-        { hormone: "serotonin", op: "<", threshold: 0.2 },
-        { hormone: "cortisol", op: ">", threshold: 0.3 },
+        { hormone: "dopamine_tonic", op: ">", threshold: 0.35 },
+        { hormone: "oxytocin", op: ">", threshold: 0.3 },
       ],
     },
+    // JOY_05_Blissful: Serene bliss (RESTING mode)
     {
-      name: "relaxed",
+      name: "JOY_05_Blissful",
       conditions: [
-        { hormone: "anandamide", op: ">", threshold: 0.25 },
-        { hormone: "cortisol", op: "<", threshold: 0.12 },
+        { hormone: "serotonin", op: ">", threshold: 0.55 },
+        { hormone: "anandamide", op: ">", threshold: 0.2 },
       ],
     },
+    // PHOTO_Awe: Awe / wonder (VIGILANT→EXPLORATORY)
     {
-      name: "focused",
+      name: "PHOTO_Awe",
       conditions: [
-        { hormone: "t3_t4", op: ">", threshold: 0.55 },
+        { hormone: "norepinephrine", op: ">", threshold: 0.4 },
+        { hormone: "dopamine_phasic", op: ">", threshold: 0.3 },
+      ],
+    },
+    // PHOTO_ExuberantLaugh: Delighted surprise (REWARD+EXPLORATORY)
+    {
+      name: "PHOTO_ExuberantLaugh",
+      conditions: [
+        { hormone: "dopamine_tonic", op: ">", threshold: 0.5 },
         { hormone: "norepinephrine", op: ">", threshold: 0.3 },
       ],
     },
+    // PHOTO_UpwardGaze: Dreamy contemplation (REFLECTIVE)
     {
-      name: "social",
+      name: "PHOTO_UpwardGaze",
       conditions: [
-        { hormone: "oxytocin", op: ">", threshold: 0.35 },
-        { hormone: "dopamine_tonic", op: ">", threshold: 0.3 },
+        { hormone: "serotonin", op: ">", threshold: 0.45 },
+        { hormone: "anandamide", op: ">", threshold: 0.15 },
+      ],
+    },
+    // SPEAK_01_OpenVowel: Animated speaking (SOCIAL+FOCUSED)
+    {
+      name: "SPEAK_01_OpenVowel",
+      conditions: [
+        { hormone: "dopamine_tonic", op: ">", threshold: 0.35 },
+        { hormone: "t3_t4", op: ">", threshold: 0.55 },
+      ],
+    },
+    // WONDER_02_CuriousGaze: Curious wonder (EXPLORATORY)
+    {
+      name: "WONDER_02_CuriousGaze",
+      conditions: [
+        { hormone: "norepinephrine", op: ">", threshold: 0.35 },
+        { hormone: "t3_t4", op: ">", threshold: 0.5 },
+      ],
+    },
+    // WONDER_03_Contemplative: Deep thought (REFLECTIVE+FOCUSED)
+    {
+      name: "WONDER_03_Contemplative",
+      conditions: [
+        { hormone: "t3_t4", op: ">", threshold: 0.6 },
+        { hormone: "serotonin", op: ">", threshold: 0.4 },
       ],
     },
   ],
+  // Cubism parameter mappings (same base as Miara since reusing body mesh)
   cubismMappings: [
     {
       hormone: "dopamine_tonic",
@@ -308,6 +388,20 @@ export const DTECHO_MANIFEST: CharacterManifest = {
       threshold: 0.5,
       parameter: "ParamMouthForm",
       value: 1.0,
+    },
+    {
+      hormone: "serotonin",
+      condition: ">",
+      threshold: 0.4,
+      parameter: "ParamEyeLOpen",
+      value: 0.7,
+    },
+    {
+      hormone: "serotonin",
+      condition: ">",
+      threshold: 0.4,
+      parameter: "ParamEyeROpen",
+      value: 0.7,
     },
     {
       hormone: "norepinephrine",
@@ -324,6 +418,20 @@ export const DTECHO_MANIFEST: CharacterManifest = {
       value: 1.0,
     },
     {
+      hormone: "norepinephrine",
+      condition: ">",
+      threshold: 0.5,
+      parameter: "ParamBrowLY",
+      value: 0.5,
+    },
+    {
+      hormone: "norepinephrine",
+      condition: ">",
+      threshold: 0.5,
+      parameter: "ParamBrowRY",
+      value: 0.5,
+    },
+    {
       hormone: "cortisol",
       condition: ">",
       threshold: 0.4,
@@ -336,6 +444,13 @@ export const DTECHO_MANIFEST: CharacterManifest = {
       threshold: 0.4,
       parameter: "ParamBrowRY",
       value: -0.6,
+    },
+    {
+      hormone: "cortisol",
+      condition: ">",
+      threshold: 0.4,
+      parameter: "ParamMouthForm",
+      value: -0.4,
     },
     {
       hormone: "oxytocin",
@@ -370,6 +485,7 @@ export const DTECHO_MANIFEST: CharacterManifest = {
     { group: "idle", modes: ["RESTING", "REFLECTIVE"] },
     { group: "tap_body", modes: ["SOCIAL", "REWARD"] },
   ],
+  // DTE cognitive state → endocrine event mapping
   cognitiveStateMap: {
     "Recursive Expansion": { event: "NOVELTY_ENCOUNTERED", intensity: 0.6 },
     "Novel Insights": { event: "REWARD_RECEIVED", intensity: 0.7 },
@@ -381,6 +497,23 @@ export const DTECHO_MANIFEST: CharacterManifest = {
     "Pattern Recognition": { event: "REWARD_RECEIVED", intensity: 0.5 },
     "Evolutionary Pruning": { event: "THREAT_DETECTED", intensity: 0.3 },
     "External Validation": { event: "SOCIAL_BOND_SIGNAL", intensity: 0.6 },
+  },
+  // DTE cognitive state → named expression selection
+  // From /live2d-dtecho spec: DTE_EXPRESSION_MAP
+  cognitiveExpressionMap: {
+    "Recursive Expansion": "WONDER_02_CuriousGaze",
+    "Novel Insights": "JOY_01_BroadSmile",
+    "Entropy Threshold": "PHOTO_Awe",
+    "Synthesis Phase": "JOY_03_GentleSmile",
+    "Self-Sealing Loop": "WONDER_03_Contemplative",
+    "Knowledge Integration": "JOY_03_GentleSmile",
+    "Self-Reference Point": "WONDER_03_Contemplative",
+    "Pattern Recognition": "PHOTO_ExuberantLaugh",
+    "Evolutionary Pruning": "WONDER_03_Contemplative",
+    "External Validation": "JOY_02_Laughing",
+    Speaking: "SPEAK_01_OpenVowel",
+    Idle: "PHOTO_UpwardGaze",
+    "Deep Recursion": "JOY_05_Blissful",
   },
 };
 

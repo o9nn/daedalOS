@@ -316,6 +316,11 @@ const Live2DAvatar: FC<ComponentProcessProps> = ({ id }) => {
           >
             {agentState?.cognitiveMode || "RESTING"}
           </span>
+          {agentState?.activeExpression && (
+            <span style={{ color: "#a4f", fontSize: "10px" }}>
+              {agentState.activeExpression}
+            </span>
+          )}
           <span style={{ color: "#666" }}>
             tick #{agentState?.tickCount || 0}
           </span>

@@ -1,6 +1,15 @@
 // Autonomous Agent Engine
 // Drives the simulation tick loop: cognitive state → endocrine events → expression
 // Implements the composition: SimulationEngine ⊗ EndocrineSystem ⊗ ExpressionBridge
+//
+// Pipeline per tick (aligned with /live2d-dtecho dtechoExpressionTick spec):
+//   1. Get cognitive state
+//   2. Fire endocrine event from cognitive state
+//   3. Tick endocrine system (hormone decay/accumulation)
+//   4. Evaluate expression rules from hormones
+//   5. Apply Cubism parameter mappings
+//   6. Apply cognitive mode motion/pose
+//   7. Apply to Live2D model
 
 import type { EndocrineEvent } from "utils/endocrine";
 import { VirtualEndocrineSystem } from "utils/endocrine";
@@ -48,10 +57,24 @@ const MIARA_STATE_MAP: Record<
   Creating: { event: "GOAL_ACHIEVED", intensity: 0.5 },
 };
 
+// Cognitive mode → head/gaze pose (from /live2d-dtecho spec step 6)
+const MODE_POSE: Partial<Record<string, Record<string, number>>> = {
+  RESTING: { ParamAngleX: 0, ParamAngleY: -5 },
+  EXPLORATORY: { ParamAngleX: 8, ParamAngleY: 5, ParamEyeBallX: 0.3 },
+  FOCUSED: { ParamAngleX: 0, ParamAngleY: 0, ParamEyeBallY: -0.2 },
+  STRESSED: { ParamAngleX: -3, ParamAngleY: -8 },
+  SOCIAL: { ParamAngleX: 5, ParamAngleY: 3 },
+  REFLECTIVE: { ParamAngleX: -5, ParamAngleY: 8, ParamEyeBallY: 0.3 },
+  VIGILANT: { ParamAngleX: 0, ParamAngleY: 0, ParamEyeBallX: 0.4 },
+  REWARD: { ParamAngleX: 0, ParamAngleY: 5 },
+  THREAT: { ParamAngleX: 0, ParamAngleY: -10 },
+};
+
 export interface AgentState {
   characterId: string;
   cognitiveState: string;
   cognitiveMode: string;
+  activeExpression: string | null;
   hormones: Record<string, number>;
   tickCount: number;
   modeHistory: Array<{ time: number; mode: string }>;
@@ -63,6 +86,7 @@ export class AutonomousAgent {
   public readonly bridge: EndocrineExpressionBridge;
 
   private cognitiveState: string;
+  private activeExpression: string | null = null;
   private stateIndex = 0;
   private tickCount = 0;
   private tickIntervalMs: number;
@@ -136,6 +160,7 @@ export class AutonomousAgent {
       characterId: this.manifest.id,
       cognitiveState: this.cognitiveState,
       cognitiveMode: this.endocrine.currentMode(),
+      activeExpression: this.activeExpression,
       hormones: endoState.concentrations,
       tickCount: this.tickCount,
       modeHistory: this.endocrine.getHistory(),
@@ -147,20 +172,29 @@ export class AutonomousAgent {
     this.endocrine.signalEvent(event, intensity);
   }
 
-  /** Single simulation tick */
+  /**
+   * Single simulation tick — implements the dtechoExpressionTick pipeline:
+   *   1. Get cognitive state
+   *   2. Fire endocrine event from cognitive state
+   *   3. Tick endocrine system (hormone decay/accumulation)
+   *   4. Evaluate expression rules from hormones (or use cognitiveExpressionMap)
+   *   5. Apply Cubism parameter mappings
+   *   6. Apply cognitive mode head/gaze pose
+   *   7. Apply to Live2D model
+   */
   private tick(): void {
     this.tickCount++;
 
-    // 1. Advance cognitive state (stochastic with weighted transitions)
+    // Step 1: Advance cognitive state (stochastic with weighted transitions)
     this.advanceCognitiveState();
 
-    // 2. Fire endocrine event from cognitive state
+    // Step 2: Fire endocrine event from cognitive state
     const mapping = this.stateMap[this.cognitiveState];
     if (mapping) {
       this.endocrine.signalEvent(mapping.event, mapping.intensity);
     }
 
-    // 3. Add random micro-events for liveliness
+    // Add random micro-events for liveliness
     if (Math.random() < 0.15) {
       const microEvents: EndocrineEvent[] = [
         "NOVELTY_ENCOUNTERED",
@@ -172,15 +206,42 @@ export class AutonomousAgent {
       this.endocrine.signalEvent(randomEvent, 0.1 + Math.random() * 0.2);
     }
 
-    // 4. Tick endocrine system (hormone decay/accumulation)
+    // Step 3: Tick endocrine system (hormone decay/accumulation)
     this.endocrine.tick(this.tickIntervalMs / 1000);
 
-    // 5. Apply expression bridge to Live2D model
+    // Steps 4-6: Apply expression bridge to Live2D model
+    // The bridge handles expression rules, Cubism parameters, and motion
     const mode = this.endocrine.currentMode();
     const state = this.endocrine.state();
+
+    // For DTE: also use cognitiveExpressionMap for direct state→expression
+    if (this.manifest.cognitiveExpressionMap && this.model) {
+      const directExpression =
+        this.manifest.cognitiveExpressionMap[this.cognitiveState];
+      if (directExpression) {
+        this.activeExpression = directExpression;
+      }
+    }
+
+    // Apply the bridge (expression rules, Cubism params, motion)
     this.bridge.apply(state, mode, this.model);
 
-    // 6. Notify state change callbacks
+    // Step 6: Apply cognitive mode head/gaze pose
+    if (this.model?.internalModel?.coreModel) {
+      const pose = MODE_POSE[mode];
+      if (pose) {
+        const coreModel = this.model.internalModel.coreModel;
+        for (const [paramName, paramValue] of Object.entries(pose)) {
+          try {
+            coreModel.setParameterValueById(paramName, paramValue);
+          } catch {
+            // Parameter may not exist — silently skip
+          }
+        }
+      }
+    }
+
+    // Step 7: Notify state change callbacks
     const agentState = this.getState();
     for (const cb of this.stateChangeCallbacks) {
       cb(agentState);
