@@ -18,6 +18,7 @@ import { useProcesses } from "contexts/process";
 import { useSession } from "contexts/session";
 import { useProcessesRef } from "hooks/useProcessesRef";
 import { useWebGPUCheck } from "hooks/useWebGPUCheck";
+import { CLOSE_EFFECT_NAMES } from "utils/closeEffect";
 import {
   DESKTOP_PATH,
   FOLDER_ICON,
@@ -85,7 +86,9 @@ const useFolderContextMenu = (
     updateFolder,
   } = useFileSystem();
   const {
+    closeEffect,
     iconPositions,
+    setCloseEffect,
     setForegroundId,
     setWallpaper: setSessionWallpaper,
     setIconPositions,
@@ -471,6 +474,14 @@ const useFolderContextMenu = (
                       : []
                   ),
                 },
+                {
+                  label: "Window close effect",
+                  menu: CLOSE_EFFECT_NAMES.map((effectName) => ({
+                    action: () => setCloseEffect(effectName),
+                    label: effectName,
+                    toggle: closeEffect === effectName,
+                  })),
+                },
                 ...(canCapture
                   ? [
                       {
@@ -579,6 +590,7 @@ const useFolderContextMenu = (
       addToFolder,
       canCapture,
       captureScreen,
+      closeEffect,
       contextMenu,
       exists,
       hasWebGPU,
@@ -594,6 +606,7 @@ const useFolderContextMenu = (
       pasteToFolder,
       processesRef,
       rootFs?.mntMap,
+      setCloseEffect,
       setForegroundId,
       setSessionWallpaper,
       sortBy,

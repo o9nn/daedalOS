@@ -9,3 +9,18 @@ type FCWithRef<R = HTMLElement, T = Record<string, unknown>> = (
 declare module "utif" {
   export const bufferToURI: (data: Buffer) => string;
 }
+
+declare module "Burn-My-Windows/resources/shaders/*.frag" {
+  const content: string;
+  export default content;
+}
+
+declare module "Burn-My-Windows/resources/shaders/*.glsl" {
+  const content: string;
+  export default content;
+}
+
+declare module "Burn-My-Windows/schemas/*.xml" {
+  const content: string;
+  export default content;
+}

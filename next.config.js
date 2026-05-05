@@ -79,6 +79,12 @@ const nextConfig = {
     config.module.parser.javascript = config.module.parser.javascript || {};
     config.module.parser.javascript.dynamicImportFetchPriority = "high";
 
+    config.module.rules.push({
+      include: path.resolve(__dirname, "node_modules/Burn-My-Windows"),
+      test: /\.(frag|glsl|xml)$/,
+      type: "asset/source",
+    });
+
     return config;
   },
 };

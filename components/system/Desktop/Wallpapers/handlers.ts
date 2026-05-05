@@ -3,6 +3,8 @@ import {
   type WallpaperHandler,
   type ApodResponse,
   type ArtInstituteOfChicagoResponse,
+  type MetMuseumSearchResponse,
+  type MetMuseumObjectResponse,
 } from "components/system/Desktop/Wallpapers/types";
 import { type WallpaperFit } from "contexts/session/types";
 import {
@@ -22,6 +24,7 @@ import {
 const API_URL = {
   APOD: "https://api.nasa.gov/planetary/apod",
   ART_INSTITUTE_OF_CHICAGO: "https://api.artic.edu/api/v1/artworks/search",
+  MET_MUSEUM: "https://collectionapi.metmuseum.org/public/collection/v1",
 };
 
 const isResourceOk = async (url: string): Promise<boolean> => {
@@ -36,6 +39,36 @@ const isResourceOk = async (url: string): Promise<boolean> => {
     return false;
   }
 };
+
+const createArtworkHandler =
+  (fetchUrl: () => Promise<string>): WallpaperHandler =>
+  async () => {
+    const maybeFetchArtwork = async (attempt = 1): Promise<string> => {
+      try {
+        const url = await fetchUrl();
+
+        if (url) return url;
+      } catch {
+        // Ignore failure to get wallpaper
+      }
+
+      return attempt < MAX_RETRIES
+        ? await new Promise((resolve) => {
+            setTimeout(
+              () => resolve(maybeFetchArtwork(attempt + 1)),
+              MILLISECONDS_IN_SECOND
+            );
+          })
+        : "";
+    };
+
+    return {
+      fallbackBackground: "",
+      newWallpaperFit: "fit",
+      updateTimeout: MILLISECONDS_IN_HOUR,
+      wallpaperUrl: await maybeFetchArtwork(),
+    };
+  };
 
 export const wallpaperHandler: Record<string, WallpaperHandler> = {
   APOD: async ({ isAlt }) => {
@@ -71,10 +104,9 @@ export const wallpaperHandler: Record<string, WallpaperHandler> = {
       wallpaperUrl,
     };
   },
-  ART_INSTITUTE_OF_CHICAGO: async () => {
-    // eslint-disable-next-line unicorn/consistent-function-scoping
-    const fetchArtwork = (): Promise<ArtInstituteOfChicagoResponse> =>
-      jsonFetch<ArtInstituteOfChicagoResponse>(
+  ART_INSTITUTE_OF_CHICAGO: createArtworkHandler(async () => {
+    const { data: [{ image_id } = {}] = [] } =
+      await jsonFetch<ArtInstituteOfChicagoResponse>(
         API_URL.ART_INSTITUTE_OF_CHICAGO,
         {
           body: JSON.stringify({
@@ -118,36 +150,15 @@ export const wallpaperHandler: Record<string, WallpaperHandler> = {
           method: "POST",
         }
       );
-    const maybeFetchArtwork = async (attempt = 1): Promise<string> => {
-      try {
-        const { data: [{ image_id } = {}] = [] } = await fetchArtwork();
 
-        if (image_id) {
-          const url = `https://www.artic.edu/iiif/2/${image_id}/full/1686,/0/default.jpg`;
+    if (image_id) {
+      const url = `https://www.artic.edu/iiif/2/${image_id}/full/1686,/0/default.jpg`;
 
-          if (await isResourceOk(url)) return url;
-        }
-      } catch {
-        // Ignore failure to get wallpaper
-      }
+      if (await isResourceOk(url)) return url;
+    }
 
-      return attempt < MAX_RETRIES
-        ? await new Promise((resolve) => {
-            setTimeout(
-              () => resolve(maybeFetchArtwork(attempt + 1)),
-              MILLISECONDS_IN_SECOND
-            );
-          })
-        : "";
-    };
-
-    return {
-      fallbackBackground: "",
-      newWallpaperFit: "fit",
-      updateTimeout: MILLISECONDS_IN_HOUR,
-      wallpaperUrl: await maybeFetchArtwork(),
-    };
-  },
+    return "";
+  }),
   LOREM_PICSUM: () => {
     // eslint-disable-next-line unicorn/consistent-function-scoping
     const createLoremPicsumUrl = (): string =>
@@ -160,4 +171,34 @@ export const wallpaperHandler: Record<string, WallpaperHandler> = {
       wallpaperUrl: createLoremPicsumUrl(),
     };
   },
+  MET_MUSEUM: (() => {
+    let cachedIds: number[];
+
+    return createArtworkHandler(async () => {
+      cachedIds ??=
+        (
+          await jsonFetch<MetMuseumSearchResponse>(
+            `${API_URL.MET_MUSEUM}/search?hasImages=true&departmentId=11&q=*`
+          )
+        )?.objectIDs ?? [];
+
+      if (cachedIds.length > 0) {
+        const randomId =
+          cachedIds[Math.floor(Math.random() * cachedIds.length)];
+        const { isPublicDomain, primaryImage, primaryImageSmall } =
+          await jsonFetch<MetMuseumObjectResponse>(
+            `${API_URL.MET_MUSEUM}/objects/${randomId}`
+          );
+
+        if (isPublicDomain && primaryImage) {
+          if (await isResourceOk(primaryImage)) return primaryImage;
+          if (primaryImageSmall && (await isResourceOk(primaryImageSmall))) {
+            return primaryImageSmall;
+          }
+        }
+      }
+
+      return "";
+    });
+  })(),
 };

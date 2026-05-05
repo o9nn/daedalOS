@@ -268,8 +268,6 @@
 ## Visuals & Effects
 
 - [Frosted Glass](https://frosted-glass.shud.in/)
-- Window Animations
-  - [Burn My Windows](https://github.com/Schneegans/Burn-My-Windows) ([#358](https://github.com/Schneegans/Burn-My-Windows/discussions/358))
 - 3D
   - [noclip](https://noclip.website/)
   - [Object Viewer](https://rubenandrebarreiro.github.io/projects/threejs/3d-object-viewer-super-mario-bros/3d-object-viewer-super-mario-bros.html)
@@ -283,8 +281,6 @@
   - [Paper Clouds](https://www.shadertoy.com/view/WtjGRc)
   - [Descent](https://www.shadertoy.com/view/wdfGW4)
   - [Glassy Field](https://www.shadertoy.com/view/4ttGDH)
-- Art Wallpapers
-  - [MMoA](https://metmuseum.github.io/)
 - [spacekit](https://github.com/typpo/spacekit)
 - [ASCII Clouds](https://caidan.dev/portfolio/ascii_clouds/)
 - [twigl](https://github.com/doxas/twigl)

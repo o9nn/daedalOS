@@ -2387,6 +2387,10 @@
   resolved "https://registry.yarnpkg.com/@zeit/schemas/-/schemas-2.36.0.tgz#7a1b53f4091e18d0b404873ea3e3c83589c765f2"
   integrity sha512-7kjMwcChYEzMKjeex9ZFXkt1AyNov9R5HZtjBKVsmVpw7pa7ZtlCGvCBC2vnnXctaYN+aRI61HjIqeetZW5ROg==
 
+"Burn-My-Windows@https://github.com/Schneegans/Burn-My-Windows":
+  version "0.0.0"
+  resolved "https://github.com/Schneegans/Burn-My-Windows#f71ed24ae09d1b48121a4232d54df009bf9dccbb"
+
 abort-controller@^3.0.0:
   version "3.0.0"
   resolved "https://registry.yarnpkg.com/abort-controller/-/abort-controller-3.0.0.tgz#eaf54d53b62bae4138e809ca225c8439a6efb392"

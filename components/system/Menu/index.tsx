@@ -92,6 +92,10 @@ const Menu: FC<MenuProps> = ({ subMenu }) => {
         Math.round(
           Math.max(0, y + height - (adjustedHeight - topAdjustedBottomOffset))
         ) + (subMenuOffscreenY ? Math.round(height + (subMenu?.y || 0)) : 0);
+
+      if (subMenu && menuY - newOffset.y < 0) {
+        newOffset.y = Math.round(menuY);
+      }
     }
 
     setOffset(newOffset);
